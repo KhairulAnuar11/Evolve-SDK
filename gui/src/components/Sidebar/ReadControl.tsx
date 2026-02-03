@@ -13,7 +13,7 @@ export default function ReadControl() {
           onClick={() => setScanning(true)}
           disabled={scanning}
           className={`flex items-center justify-center gap-2 py-2 rounded text-white font-bold shadow
-            ${scanning ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+            ${scanning ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
         >
           <span>▶ Start Read</span>
         </button>
@@ -22,7 +22,7 @@ export default function ReadControl() {
           onClick={() => setScanning(false)}
           disabled={!scanning}
           className={`flex items-center justify-center gap-2 py-2 rounded text-white font-bold shadow
-            ${!scanning ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-500 hover:bg-gray-600'}`}
+            ${!scanning ? 'bg-red-500 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
         >
           <span>⏹ Stop Read</span>
         </button>

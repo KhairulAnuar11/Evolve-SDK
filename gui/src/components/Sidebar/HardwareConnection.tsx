@@ -7,7 +7,7 @@ export default function HardwareConnection() {
 
   return (
     <div className="mb-4 p-2 border border-gray-300 rounded bg-white shadow-sm">
-      <h3 className="text-xs font-bold text-gray-700 mb-2">Hardware Connection</h3>
+      <h3 className="text-xs font-bold text-gray-700 mb-2">Connection Configuration</h3>
       
       {/* Connection Type Selection */}
       <div className="flex flex-col gap-1 mb-3">
