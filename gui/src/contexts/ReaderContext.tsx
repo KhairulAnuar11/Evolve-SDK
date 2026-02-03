@@ -1,29 +1,36 @@
-// src/contexts/ReaderContext.tsx
-import { createContext, useState, ReactNode } from 'react';
-import { UF3SReader } from '@evolve/sdk';
+import React, { createContext, useState, useContext } from 'react';
+import { sdkService } from '../services/sdkService';
 
-interface ReaderContextType {
-  readers: UF3SReader[];
-  addReader: (reader: UF3SReader) => void;
-  removeReader: (reader: UF3SReader) => void;
+interface ReaderState {
+  isConnected: boolean;
+  connect: (ip: string, port: number) => Promise<void>;
+  disconnect: () => Promise<void>;
 }
 
-export const ReaderContext = createContext<ReaderContextType>({
-  readers: [],
-  addReader: () => {},
-  removeReader: () => {}
-});
+const ReaderContext = createContext<ReaderState | null>(null);
 
-export const ReaderProvider = ({ children }: { children: ReactNode }) => {
-  const [readers, setReaders] = useState<UF3SReader[]>([]);
+export const ReaderProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+  const [isConnected, setIsConnected] = useState(false);
 
-  const addReader = (reader: UF3SReader) => setReaders((prev) => [...prev, reader]);
-  const removeReader = (reader: UF3SReader) =>
-    setReaders((prev) => prev.filter((r) => r !== reader));
+  const connect = async (ip: string, port: number) => {
+    try {
+      const res = await sdkService.connect(ip, port);
+      if (res.success) setIsConnected(true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const disconnect = async () => {
+    await sdkService.disconnect();
+    setIsConnected(false);
+  };
 
   return (
-    <ReaderContext.Provider value={{ readers, addReader, removeReader }}>
+    <ReaderContext.Provider value={{ isConnected, connect, disconnect }}>
       {children}
     </ReaderContext.Provider>
   );
 };
+
+export const useReader = () => useContext(ReaderContext)!;
