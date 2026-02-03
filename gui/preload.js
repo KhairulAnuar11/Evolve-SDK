@@ -13,5 +13,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   //1. Listen for "File > System Logs" menu click
   onExportLogsTrigger: (callback) => ipcRenderer.on('menu:export-logs', (_event, value) => callback(value)),
   //2. Invoke IPC to save logs to file
-  saveLogsToFile: (logContent) => ipcRenderer.invoke('logs:save-to-file', logContent),
+  saveLogs: (logContent) => ipcRenderer.invoke('logs:save-to-file', logContent),
 });

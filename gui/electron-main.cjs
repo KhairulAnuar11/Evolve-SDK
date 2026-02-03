@@ -51,7 +51,7 @@ function createApplicationMenu() {
       label: 'File',
       submenu: [
         { 
-          label: 'System Logs', 
+          label: 'Export Logs', 
           click: async () => { 
             // Opens the log folder in Windows Explorer / Finder
             if (mainWindow) {
@@ -103,7 +103,7 @@ function createApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'About EvolveSDK',
+          label: 'About',
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
