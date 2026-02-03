@@ -32,6 +32,7 @@ var index_exports = {};
 __export(index_exports, {
   BaseRFIDReader: () => BaseRFIDReader,
   EventBus: () => EventBus,
+  PortDiscovery: () => PortDiscovery,
   ReaderState: () => ReaderState,
   SDKEvent: () => SDKEvent,
   SerialTransport: () => SerialTransport,
@@ -57,24 +58,160 @@ var SDKEvent = /* @__PURE__ */ ((SDKEvent2) => {
 })(SDKEvent || {});
 
 // src/core/EventBus.ts
-var EventBus = class {
-  constructor() {
+var EventBus = class _EventBus {
+  constructor(maxListeners = 100) {
     this.emitter = new import_eventemitter3.default();
+    this.listeners = /* @__PURE__ */ new Map();
+    this.errorHandlers = /* @__PURE__ */ new Set();
+    this.maxListeners = 100;
+    this.maxListeners = maxListeners;
   }
+  /**
+   * Subscribe to an event
+   * @param event - The event to listen to
+   * @param listener - The callback function
+   * @returns Unsubscribe function for convenience
+   */
   on(event, listener) {
     this.emitter.on(event, listener);
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, /* @__PURE__ */ new Set());
+    }
+    this.listeners.get(event).add(listener);
+    return () => this.off(event, listener);
   }
+  /**
+   * Subscribe to an event only once
+   * @param event - The event to listen to
+   * @param listener - The callback function
+   */
+  once(event, listener) {
+    this.emitter.once(event, listener);
+  }
+  /**
+   * Unsubscribe from an event
+   * @param event - The event to unsubscribe from
+   * @param listener - The callback function to remove
+   */
   off(event, listener) {
     this.emitter.off(event, listener);
+    if (this.listeners.has(event)) {
+      this.listeners.get(event).delete(listener);
+    }
   }
+  /**
+   * Emit an event
+   * @param event - The event to emit
+   * @param payload - The data to send with the event
+   */
   emit(event, payload) {
-    this.emitter.emit(event, payload);
+    return this.emitter.emit(event, payload);
   }
+  /**
+   * Emit an error event
+   * @param error - The error to emit
+   */
   emitError(error) {
     this.emitter.emit("error" /* ERROR */, error);
+    for (const handler of this.errorHandlers) {
+      try {
+        handler(error);
+      } catch (err) {
+        console.error("Error in error handler:", err);
+      }
+    }
+    if (this.listenerCount("error" /* ERROR */) === 0 && this.errorHandlers.size === 0) {
+      console.warn("Unhandled SDK error:", error);
+    }
   }
-  removeAll() {
-    this.emitter.removeAllListeners();
+  /**
+   * Register a global error handler
+   * @param handler - The error handler function
+   */
+  onError(handler) {
+    this.errorHandlers.add(handler);
+    return () => this.errorHandlers.delete(handler);
+  }
+  /**
+   * Remove all listeners for an event or all events
+   * @param event - The specific event to clear, or undefined to clear all
+   */
+  removeAllListeners(event) {
+    if (event) {
+      this.emitter.removeAllListeners(event);
+      this.listeners.delete(event);
+    } else {
+      this.emitter.removeAllListeners();
+      this.listeners.clear();
+    }
+  }
+  /**
+   * Get the number of listeners for an event
+   * @param event - The event to check
+   */
+  listenerCount(event) {
+    return this.emitter.listenerCount(event);
+  }
+  /**
+   * Get all events with active listeners
+   */
+  getActiveEvents() {
+    const active = [];
+    for (const [event, listeners] of this.listeners.entries()) {
+      if (listeners.size > 0) {
+        active.push(event);
+      }
+    }
+    return active;
+  }
+  /**
+   * Get listener details for debugging
+   */
+  getListenerDetails() {
+    const details = {};
+    for (const [event, listeners] of this.listeners.entries()) {
+      if (listeners.size > 0) {
+        details[event] = listeners.size;
+      }
+    }
+    return details;
+  }
+  /**
+   * Wait for a specific event to be emitted
+   * @param event - The event to wait for
+   * @param timeout - Optional timeout in ms
+   */
+  waitFor(event, timeout) {
+    return new Promise((resolve, reject) => {
+      let timeoutHandle = null;
+      const listener = (payload) => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        this.off(event, listener);
+        resolve(payload);
+      };
+      if (timeout) {
+        timeoutHandle = setTimeout(() => {
+          this.off(event, listener);
+          reject(new Error(`Timeout waiting for event: ${event}`));
+        }, timeout);
+      }
+      this.on(event, listener);
+    });
+  }
+  /**
+   * Create a scoped event bus for a specific context
+   * Useful for isolated event handling
+   */
+  createScope() {
+    return new _EventBus(this.maxListeners);
+  }
+  /**
+   * Clean up and destroy the event bus
+   */
+  destroy() {
+    this.errorHandlers.clear();
+    this.removeAllListeners();
+    this.listeners.clear();
   }
 };
 
@@ -150,33 +287,63 @@ var SerialTransport = class {
     this.options = options;
     this.dataCallback = null;
     this.errorCallback = null;
+    this.connected = false;
     this.port = new import_serialport.SerialPort({
       path,
       baudRate,
+      dataBits: options?.dataBits ?? 8,
+      stopBits: options?.stopBits ?? 1,
+      parity: options?.parity ?? "none",
       autoOpen: false
     });
-    this.port.on("data", (data) => this.dataCallback?.(data));
-    this.port.on("error", (err) => this.errorCallback?.(err));
+    this.setupEventHandlers();
+  }
+  setupEventHandlers() {
+    this.port.on("data", (data) => {
+      this.dataCallback?.(data);
+    });
+    this.port.on("error", (err) => {
+      this.connected = false;
+      this.errorCallback?.(err);
+    });
+    this.port.on("close", () => {
+      this.connected = false;
+    });
+    this.port.on("open", () => {
+      this.connected = true;
+    });
   }
   connect() {
     return new Promise((resolve, reject) => {
+      if (this.connected) return resolve();
       this.port.open((err) => {
-        if (err) return reject(err);
+        if (err) {
+          this.connected = false;
+          return reject(new Error(`Failed to open serial port: ${err.message}`));
+        }
+        this.connected = true;
         resolve();
       });
     });
   }
   disconnect() {
-    return new Promise((resolve) => {
-      if (!this.port.isOpen) return resolve();
-      this.port.close(() => resolve());
+    return new Promise((resolve, reject) => {
+      if (!this.connected) return resolve();
+      this.port.close((err) => {
+        if (err) {
+          return reject(new Error(`Failed to close serial port: ${err.message}`));
+        }
+        this.connected = false;
+        resolve();
+      });
     });
   }
   send(data) {
     return new Promise((resolve, reject) => {
-      if (!this.port.isOpen) return reject(new Error("Serial port not open"));
-      const bufferToSend = typeof data === "string" ? Buffer.from(data, "utf-8") : data;
-      this.port.write(bufferToSend, (err) => {
+      if (!this.connected || !this.port.isOpen) {
+        return reject(new Error("Serial port not open"));
+      }
+      this.port.write(data, (err) => {
         if (err) return reject(err);
         resolve();
       });
@@ -189,7 +356,18 @@ var SerialTransport = class {
     this.errorCallback = callback;
   }
   isConnected() {
-    return this.port.isOpen;
+    return this.connected && this.port.isOpen;
+  }
+  /**
+   * Get list of available serial ports
+   * Useful for discovering connected RFID readers
+   */
+  static async listPorts() {
+    try {
+      return await import_serialport.SerialPort.list();
+    } catch (err) {
+      throw new Error(`Failed to list serial ports: ${err.message}`);
+    }
   }
 };
 
@@ -278,10 +456,94 @@ var UF3SReader = class extends BaseRFIDReader {
     }
   }
 };
+
+// src/diagnostics/PortDiscovery.ts
+var PortDiscovery = class {
+  /**
+   * List all available serial ports
+   */
+  static async listSerialPorts() {
+    try {
+      return await SerialTransport.listPorts();
+    } catch (err) {
+      console.error("Error listing serial ports:", err);
+      return [];
+    }
+  }
+  /**
+   * Scan for TCP readers on a network range
+   * @param startIP - Starting IP address (e.g., "192.168.1.1")
+   * @param endIP - Ending IP address (e.g., "192.168.1.255")
+   * @param port - Port to scan (default 8088 for UF3-S)
+   * @param timeout - Connection timeout in ms (default 1000)
+   */
+  static async scanTCPNetwork(startIP, endIP, port = 8088, timeout = 1e3) {
+    const foundReaders = [];
+    const ips = this.generateIPRange(startIP, endIP);
+    const scanPromises = ips.map(
+      (ip) => this.testTCPConnection(ip, port, timeout).then((success) => {
+        if (success) {
+          foundReaders.push({
+            id: `tcp-${ip}-${port}`,
+            model: "UF3-S",
+            transport: "tcp",
+            address: ip,
+            port
+          });
+        }
+      }).catch(() => {
+      })
+    );
+    await Promise.all(scanPromises);
+    return foundReaders;
+  }
+  /**
+   * Test TCP connection to a specific address
+   */
+  static testTCPConnection(host, port, timeout) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeout);
+      const transport = new TCPTransport(host, port);
+      transport.connect().then(() => {
+        clearTimeout(timer);
+        transport.disconnect();
+        resolve(true);
+      }).catch(() => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+  }
+  /**
+   * Generate array of IP addresses from range
+   */
+  static generateIPRange(startIP, endIP) {
+    const ips = [];
+    const [start1, start2, start3, start4] = startIP.split(".").map(Number);
+    const [end1, end2, end3, end4] = endIP.split(".").map(Number);
+    for (let i = start4; i <= end4; i++) {
+      ips.push(`${start1}.${start2}.${start3}.${i}`);
+    }
+    return ips;
+  }
+  /**
+   * Get suggested reader configuration from discovered port
+   */
+  static createReaderInfo(path, model = "UF3-S", transport = "serial") {
+    return {
+      id: `${transport}-${path}`,
+      model,
+      transport,
+      address: path,
+      ...transport === "tcp" && { port: 8088 }
+    };
+  }
+};
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   BaseRFIDReader,
   EventBus,
+  PortDiscovery,
   ReaderState,
   SDKEvent,
   SerialTransport,
