@@ -1,13 +1,13 @@
 // src/RfidSdk.ts
 import { RfidEventEmitter } from './events/RfidEvents';
-import { BaseReader } from './readers/BaseReader';
+import { ReaderManager } from './readers/ReaderManager';
 import { TcpReader } from './transports/TCPTransport';
 import { MqttReader } from './transports/MQTTTransport';
 import { formatPayload } from './payloads/PayloadFormatter';
 
 export class RfidSdk {
   private emitter = new RfidEventEmitter();
-  private reader?: BaseReader;
+  private reader?: ReaderManager;
   private events: Record<string, Function> = {};
 
   // --- EVENT HANDLING ---
@@ -40,10 +40,7 @@ export class RfidSdk {
 
   // --- CONFIGURE READER ---
   async configure(settings: Record<string, any>) {
-    // implement configuration for reader (if needed)
-    if (this.reader && typeof (this.reader as any).configure === 'function') {
-      await (this.reader as any).configure(settings);
-    }
+    await this.reader?.configure(settings);
   }
 
   // --- START / STOP SCAN ---
@@ -55,18 +52,13 @@ export class RfidSdk {
         this.emit('tag', formatted);
       });
 
-      if (typeof (this.reader as any).startScan === 'function') {
-        (this.reader as any).startScan();
-      }
+      this.reader.startScan();
     }
-
 
   stop() {
     if (!this.reader) return;
 
     // If reader supports stopScan(), call it
-    if (typeof (this.reader as any).stopScan === 'function') {
-      (this.reader as any).stopScan();
-    }
+    this.reader.stopScan();
   }
 }
