@@ -61,4 +61,11 @@ export class RfidSdk {
     // If reader supports stopScan(), call it
     this.reader.stopScan();
   }
+
+  async publish(tag: any, topic?: string) {
+    if (!this.reader) throw new Error('No reader connected');
+    const pub = (this.reader as any).publish;
+    if (typeof pub !== 'function') throw new Error('Connected reader does not support publish');
+    return await pub.call(this.reader, tag, topic);
+  }
 }

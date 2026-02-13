@@ -43,6 +43,20 @@ export function registerSdkBridge({ mainWindow, sdk }) {
     return { success: true };
   });
 
+  // Publish to MQTT via SDK
+  ipcMain.handle('mqtt:publish', async (_event, { tag, topic }) => {
+    console.log('[IPC] mqtt:publish', topic);
+    if (!sdk) return { success: false, error: 'SDK not initialized' };
+    if (typeof sdk.publish !== 'function') return { success: false, error: 'Publish not supported by SDK' };
+    try {
+      await sdk.publish(tag, topic);
+      return { success: true };
+    } catch (err) {
+      console.error('mqtt publish error', err);
+      return { success: false, error: err?.message || String(err) };
+    }
+  });
+
   ipcMain.handle('reader:disconnect', async () => {
     console.log('[IPC] reader:disconnect');
     if (!sdk) return { success: true };

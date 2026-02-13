@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   connectReader: (config) => ipcRenderer.invoke('reader:connect', config),
   connectMqtt: (brokerUrl, topic, options) => ipcRenderer.invoke('reader:connect-mqtt', { brokerUrl, topic, options }),
+  publishMqtt: (tag, topic) => ipcRenderer.invoke('mqtt:publish', { tag, topic }),
   disconnectReader: () => ipcRenderer.invoke('reader:disconnect'),
   startScan: () => ipcRenderer.send('reader:start-scan'),
   stopScan: () => ipcRenderer.send('reader:stop-scan'),

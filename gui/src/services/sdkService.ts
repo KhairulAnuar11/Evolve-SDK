@@ -8,6 +8,10 @@ export const sdkService = {
     // @ts-ignore
     return await window.electronAPI.connectMqtt(brokerUrl, topic, options);
   },
+  publishMqtt: async (tag: any, topic?: string) => {
+    // @ts-ignore
+    return await window.electronAPI.publishMqtt(tag, topic);
+  },
   disconnect: async () => {
     // @ts-ignore
     return await window.electronAPI.disconnectReader();
