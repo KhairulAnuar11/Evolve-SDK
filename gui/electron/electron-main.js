@@ -6,6 +6,15 @@ import { registerSdkBridge } from './ipc/sdkbridge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Ensure Electron's user data directory is set to a writable location to
+// avoid Chromium disk-cache permission errors on Windows.
+try {
+  const userDataDir = path.join(app.getPath('home'), '.evolve-sdk-electron');
+  app.setPath('userData', userDataDir);
+} catch (err) {
+  console.warn('[Main] Could not set userData path:', err);
+}
+
 let sdk = null;
 
 async function initializeSDK() {
