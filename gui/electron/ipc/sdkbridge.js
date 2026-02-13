@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -7,13 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Helper function to format the tag
  */
-const formatPayload = async (tag: any) => {
+const formatPayload = async (tag) => {
   try {
     // Use absolute path from project root for reliable module resolution
     const projectRoot = path.resolve(__dirname, '../../../');
     const sdkPath = path.resolve(projectRoot, 'sdk/dist/index.js');
     const sdkUrl = pathToFileURL(sdkPath).href;
-    const sdkModule = await import(sdkUrl) as any;
+    const sdkModule = await import(sdkUrl);
     const PayloadFormatter = sdkModule?.PayloadFormatter;
     if (!PayloadFormatter) return tag;
 
@@ -27,7 +27,7 @@ const formatPayload = async (tag: any) => {
   }
 };
 
-export function registerSdkBridge({ mainWindow, sdk }: { mainWindow: BrowserWindow; sdk: any | null }) {
+export function registerSdkBridge({ mainWindow, sdk }) {
   ipcMain.handle('reader:connect', async (_event, config) => {
     console.log('[IPC] reader:connect', config);
     if (!sdk) return { success: true, mock: true };
@@ -68,7 +68,7 @@ export function registerSdkBridge({ mainWindow, sdk }: { mainWindow: BrowserWind
       return;
     }
 
-    const tagListener = async (tag: any) => {
+    const tagListener = async (tag) => {
       const payload = await formatPayload(tag);
       mainWindow.webContents.send('rfid:tag-read', payload);
     };

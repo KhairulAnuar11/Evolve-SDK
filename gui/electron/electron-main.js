@@ -1,12 +1,12 @@
 import { app, BrowserWindow, ipcMain, Menu, dialog, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { registerSdkBridge } from './ipc/sdkbridge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-let sdk: any = null;
+let sdk = null;
 
 async function initializeSDK() {
   try {
@@ -14,11 +14,12 @@ async function initializeSDK() {
     // Use absolute path from project root for reliable module resolution
     const projectRoot = path.resolve(__dirname, '../../');
     const sdkPath = path.resolve(projectRoot, 'sdk/dist/index.js');
+    const { pathToFileURL } = await import('url');
     const sdkUrl = pathToFileURL(sdkPath).href;
     const sdkModule = await import(sdkUrl);
     const RfidSdk = sdkModule?.RfidSdk ?? sdkModule?.default;
     if (RfidSdk && typeof RfidSdk === 'function') {
-      sdk = new (RfidSdk as any)();
+      sdk = new RfidSdk();
       console.log('[App] SDK initialized successfully');
     } else {
       console.warn('[Electron] SDK class not found');
@@ -36,7 +37,7 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-let mainWindow: BrowserWindow | null = null;
+let mainWindow = null;
 
 function createWindow() {
   console.log('[Main] Creating window...');
@@ -57,9 +58,6 @@ function createWindow() {
   // During development we typically serve from Vite at localhost:5173
   console.log('[Main] Loading URL:', 'http://localhost:5173');
   mainWindow.loadURL('http://localhost:5173');
-
-  // Open dev tools during development
-  mainWindow.webContents.openDevTools();
   
   // Listen for did-finish-load to confirm window is ready
   mainWindow.webContents.on('did-finish-load', () => {
@@ -84,7 +82,7 @@ function createWindow() {
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin';
 
-  const template: any[] = [
+  const template = [
     {
       label: 'File',
       submenu: [
@@ -98,49 +96,47 @@ function createApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Export Logs',
-          click: async () => {
-            if (mainWindow) mainWindow.webContents.send('menu:export-logs');
-          },
+          label: 'Exit',
+          accelerator: isMac ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => app.quit(),
         },
-        { role: 'quit' },
       ],
     },
-    { label: 'Edit', role: 'editMenu' },
     {
-      label: 'View',
+      label: 'Edit',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
+        { label: 'Redo', accelerator: 'CmdOrCtrl+Y', role: 'redo' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { label: 'Cut', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+        { label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+        { label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
       ],
     },
     {
-      label: 'Settings',
-      click: () => {
-        if (mainWindow) mainWindow.webContents.send('menu:open-settings');
-      },
+      label: 'Tools',
+      submenu: [
+        {
+          label: 'Settings',
+          click: () => mainWindow?.webContents.send('menu:open-settings'),
+        },
+        {
+          label: 'Export Logs',
+          click: () => mainWindow?.webContents.send('menu:export-logs'),
+        },
+      ],
     },
     {
       label: 'Help',
       submenu: [
-        { label: 'Documentation', click: async () => await shell.openExternal('https://github.com/KhairulAnuar11/Evolve-SDK.git') },
-        { type: 'separator' },
         {
           label: 'About',
           click: () => {
-            dialog.showMessageBox(mainWindow!, {
+            dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'About Evolve SDK',
-              message: 'SDK Information',
-              detail: 'Version: 1.0.0\nBuild: 2026-02-03\n\n(c) 2026 Evolve Technology Platform',
-              buttons: ['OK'],
+              message: 'Evolve SDK - RFID Management',
+              detail: 'An electron-based RFID reader management system.',
             });
           },
         },
@@ -152,67 +148,19 @@ function createApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-// --- IPC: Save data CSV ---
-ipcMain.handle('data:save-csv', async (_event, { content, days }) => {
-  const { canceled, filePath } = await dialog.showSaveDialog({
-    title: `Export RFID Data (${days} Days)`,
-    defaultPath: `EvolveSDK_RFID_Data_Last_${days}_Days_${Date.now()}.csv`,
-    filters: [{ name: 'CSV Files', extensions: ['csv'] }],
-  });
-
-  if (canceled || !filePath) return { success: false };
-
-  try {
-    fs.writeFileSync(filePath, content, 'utf-8');
-    return { success: true };
-  } catch (err: any) {
-    console.error('Failed to save CSV file:', err);
-    return { success: false, error: err.message };
-  }
-});
-
-// --- IPC: Save Logs ---
-ipcMain.handle('logs:save-to-file', async (_event, logContent: string) => {
-  const { canceled, filePath } = await dialog.showSaveDialog({
-    title: 'Export System Logs',
-    defaultPath: `EvolveSDK_Logs_${Date.now()}.txt`,
-    filters: [
-      { name: 'Text Files', extensions: ['txt'] },
-      { name: 'All Files', extensions: ['*'] },
-    ],
-  });
-
-  if (canceled || !filePath) return { success: false };
-
-  try {
-    fs.writeFileSync(filePath, logContent, 'utf-8');
-    return { success: true };
-  } catch (err: any) {
-    console.error('Failed to save log file:', err);
-    return { success: false, error: err.message };
-  }
-});
-
-// --- APP LIFECYCLE ---
-app.whenReady().then(async () => {
+app.on('ready', async () => {
   await initializeSDK();
   createWindow();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('before-quit', async () => {
-  console.log('[App] Cleaning up before quitting...');
-  try {
-    await sdk?.disconnect();
-  } catch (err) {
-    console.warn('Error while disconnecting SDK during quit:', err);
+  if (process.platform !== 'darwin') {
+    app.quit();
   }
-  ipcMain.removeAllListeners();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (mainWindow === null) {
+    createWindow();
+  }
 });
