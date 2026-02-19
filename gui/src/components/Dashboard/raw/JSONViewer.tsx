@@ -28,7 +28,10 @@ export default function JSONViewer({ logs, formatter = JSONFormatter }: JSONView
             <span>{log.timestamp}</span>
           </div>
           <pre className="text-xs overflow-auto bg-white p-2 rounded border border-gray-300">
-            {formatter.format(log, 2)}
+            {typeof log.data === 'object' 
+              ? formatter.format(log.data, 2)
+              : formatter.format(log, 2)
+            }
           </pre>
         </div>
       ))}

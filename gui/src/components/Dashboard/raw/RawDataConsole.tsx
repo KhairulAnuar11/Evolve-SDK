@@ -8,7 +8,7 @@ export interface RawPacket {
   id: number;
   timestamp: string;
   direction: 'RX' | 'TX';
-  data: string;
+  data: string | Record<string, any>;
 }
 
 export type DataViewType = 'raw' | 'json' | 'text';

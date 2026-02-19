@@ -20,14 +20,20 @@ export class MqttReader extends ReaderManager {
       this.client = mqtt.connect(this.brokerUrl, this.options as any);
 
       this.client.on('connect', () => {
+        console.log('[MqttReader] Connected to broker:', this.brokerUrl);
         this.emit('connected');
         this.client?.subscribe(this.topic, (err) => {
-          if (err) return reject(err);
+          if (err) {
+            console.error('[MqttReader] Subscribe error:', err);
+            return reject(err);
+          }
+          console.log('[MqttReader] Subscribed to topic:', this.topic);
           resolve();
         });
       });
 
       this.client.on('message', (topic, payload) => {
+        console.log('[MqttReader] Message received on', topic, '- Payload length:', payload.length);
         const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload as any);
         const tag: TagData = {
           id: buffer.toString('hex'),
@@ -35,15 +41,20 @@ export class MqttReader extends ReaderManager {
           raw: buffer,
         };
 
+        console.log('[MqttReader] Emitting tag:', tag);
         this.emitTag(tag);
       });
 
       this.client.on('error', (err) => {
+        console.error('[MqttReader] Connection error:', err);
         this.emit('error', err);
         reject(err);
       });
 
-      this.client.on('close', () => this.emit('disconnected'));
+      this.client.on('close', () => {
+        console.log('[MqttReader] Connection closed');
+        this.emit('disconnected');
+      });
     });
   }
 

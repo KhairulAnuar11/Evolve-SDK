@@ -1,6 +1,6 @@
 import React from 'react';
 import { RawPacket } from './RawDataConsole';
-import { HexFormatter } from '../../../utils/PayloadFormatter';
+import { HexFormatter, JSONFormatter } from '../../../utils/PayloadFormatter';
 
 interface RawHexViewProps {
   logs: RawPacket[];
@@ -18,23 +18,33 @@ export default function RawHexView({ logs, formatter = HexFormatter }: RawHexVie
 
     return (
         <>
-            {logs.map((log) => (
-                <div
-                    key={log.id}
-                    className="flex gap-4 border-b border-gray-100 pb-1 hover:bg-gray-50"
-                >
-                    <span className="text-gray-500 w-20 shrink-0">
-                        {log.timestamp}
-                    </span>
-                    <span className={`w-8 font-bold shrink-0 ${log.direction === 'TX' ? 'text-blue-600' : 'text-green-600'}`}
-                >
-                        [{log.direction}]
-                    </span>
-                    <code className="text-gray-800 break-all">
-                        {formatter.fromHex(log.data)}
-                    </code>
-                </div>
-            ))}
+            {logs.map((log) => {
+                // Handle both string and object data
+                let displayData = '';
+                if (typeof log.data === 'string') {
+                    displayData = formatter.fromHex(log.data);
+                } else if (typeof log.data === 'object') {
+                    displayData = JSONFormatter.format(log.data);
+                }
+
+                return (
+                    <div
+                        key={log.id}
+                        className="flex gap-4 border-b border-gray-100 pb-1 hover:bg-gray-50"
+                    >
+                        <span className="text-gray-500 w-20 shrink-0">
+                            {log.timestamp}
+                        </span>
+                        <span className={`w-8 font-bold shrink-0 ${log.direction === 'TX' ? 'text-blue-600' : 'text-green-600'}`}
+                    >
+                            [{log.direction}]
+                        </span>
+                        <code className="text-gray-800 break-all">
+                            {displayData}
+                        </code>
+                    </div>
+                );
+            })}
         </>
     );
 }

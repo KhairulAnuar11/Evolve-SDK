@@ -71,12 +71,21 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       else addLog(`Export failed: ${res.error}`, "ERROR");
     });
 
+    // 4. System Messages Listener
+    // @ts-ignore
+    const removeSystemMessageListener = window.electronAPI.onSystemMessage((message: string, level: string) => {
+      // Map level to LogEntry type
+      const logType = level === 'error' ? 'ERROR' : level === 'warn' ? 'WARNING' : 'INFO';
+      addLog(message, logType);
+    });
+
     // --- CLEANUP FUNCTION ---
     // This runs when the component unmounts or re-renders, removing the old listeners
     return () => {
       removeSettingsListener();
       removeLogsListener();
       removeDataListener();
+      removeSystemMessageListener();
     };
 
   }, []); // Run once on mount
@@ -113,10 +122,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                       </div>
                     ))}
                     <div ref={logsEndRef} />
-                </div>
-                <div className="bg-purple-600 text-white px-2 py-1 text-xs flex justify-between items-center">
-                    <span>Connected to TCP/IP 192.168.1.100:8088</span>
-                    <span>v1.0.0</span>
                 </div>
               </div>
           </main>
