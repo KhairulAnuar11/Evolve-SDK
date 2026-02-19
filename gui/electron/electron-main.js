@@ -40,6 +40,22 @@ async function initializeSDK() {
   }
 }
 
+// Global safety: catch uncaught exceptions and unhandled rejections in the
+// main process so the app doesn't crash from unexpected stream/socket errors
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught Exception:', err);
+  try {
+    // Show a simple error dialog so the user can see the message
+    dialog.showErrorBox('Uncaught Exception', String(err && (err.stack || err.message || err)));
+  } catch (e) {
+    console.error('[Main] Failed to show error box:', e);
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled Rejection:', reason);
+});
+
 // --- 1. SETUP LOGS DIRECTORY ---
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 if (!fs.existsSync(LOG_DIR)) {

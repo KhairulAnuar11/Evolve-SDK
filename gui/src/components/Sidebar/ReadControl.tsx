@@ -1,5 +1,6 @@
 // gui/src/components/Sidebar/ReadControl.tsx
 import React, { useState } from 'react';
+import { sdkService } from '../../services/sdkService';
 
 export default function ReadControl() {
   const [scanning, setScanning] = useState(false);
@@ -10,7 +11,15 @@ export default function ReadControl() {
       
       <div className="flex flex-col gap-2">
         <button 
-          onClick={() => setScanning(true)}
+          onClick={async () => {
+            try {
+              // start backend scan
+              sdkService.startScan();
+              setScanning(true);
+            } catch (err) {
+              setScanning(false);
+            }
+          }}
           disabled={scanning}
           className={`flex items-center justify-center gap-2 py-2 rounded text-white font-bold shadow
             ${scanning ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
@@ -19,7 +28,14 @@ export default function ReadControl() {
         </button>
 
         <button 
-          onClick={() => setScanning(false)}
+          onClick={async () => {
+            try {
+              sdkService.stopScan();
+              setScanning(false);
+            } catch (err) {
+              // ignore
+            }
+          }}
           disabled={!scanning}
           className={`flex items-center justify-center gap-2 py-2 rounded text-white font-bold shadow
             ${!scanning ? 'bg-red-500 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
