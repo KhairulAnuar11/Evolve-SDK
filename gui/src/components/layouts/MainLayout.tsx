@@ -114,10 +114,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     ))}
                     <div ref={logsEndRef} />
                 </div>
-                <div className="bg-purple-600 text-white px-2 py-1 text-xs flex justify-between items-center">
-                    <span>Connected to TCP/IP 192.168.1.100:8088</span>
-                    <span>v1.0.0</span>
-                </div>
               </div>
           </main>
       </div>

@@ -6,24 +6,31 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Helper function to format the tag
+ * Helper function to format the tag - convert Buffer to serializable format
  */
 const formatPayload = async (tag) => {
   try {
-    const projectRoot = path.resolve(__dirname, '../../../');
-    const sdkPath = path.resolve(projectRoot, 'sdk/dist/index.js');
-    const sdkUrl = pathToFileURL(sdkPath).href;
-    const sdkModule = await import(sdkUrl);
-    const PayloadFormatter = sdkModule?.PayloadFormatter;
-    if (!PayloadFormatter) return tag;
+    // Convert Buffer to string for IPC serialization
+    let rawData = tag.raw;
+    
+    if (Buffer.isBuffer(rawData)) {
+      // Convert buffer to UTF-8 string  
+      rawData = rawData.toString('utf-8');
+    } else if (Array.isArray(rawData)) {
+      rawData = Buffer.from(rawData).toString('utf-8');
+    }
 
-    if (typeof PayloadFormatter.format === 'function') return PayloadFormatter.format(tag);
-
-    const formatter = new PayloadFormatter();
-    return formatter.format(tag);
+    return {
+      ...tag,
+      raw: rawData
+    };
   } catch (err) {
-    console.error('Error formatting payload:', err);
-    return tag;
+    console.error('[IPC] Error serializing tag payload:', err);
+    // Fallback: convert buffer to base64 if all else fails
+    return {
+      ...tag,
+      raw: Buffer.isBuffer(tag.raw) ? tag.raw.toString('base64') : tag.raw
+    };
   }
 };
 
@@ -85,6 +92,7 @@ export function registerSdkBridge({ mainWindow, sdk }) {
     console.log('[IPC] reader:start-scan');
 
     if (!sdk) {
+      console.log('[IPC] No SDK, entering mock mode');
       const interval = setInterval(async () => {
         const mockTag = {
           raw: Buffer.from('MOCK_TAG'),
@@ -101,15 +109,23 @@ export function registerSdkBridge({ mainWindow, sdk }) {
     }
 
     const tagListener = async (tag) => {
-      const payload = await formatPayload(tag);
-      mainWindow.webContents.send('rfid:tag-read', payload);
+      console.log('[IPC] Tag event received:', tag);
+      try {
+        const payload = await formatPayload(tag);
+        console.log('[IPC] Sending rfid:tag-read to GUI:', payload);
+        mainWindow.webContents.send('rfid:tag-read', payload);
+      } catch (err) {
+        console.error('[IPC] Error formatting/sending tag:', err);
+      }
     };
 
+    console.log('[IPC] Registering tag listener and starting SDK');
     sdk.on('tag', tagListener);
     sdk.start();
 
     ipcMain.once('reader:stop-scan', () => {
       try {
+        console.log('[IPC] Stopping scan');
         sdk.stop();
         // Safely remove listener if method exists
         if (typeof sdk.removeListener === 'function') {

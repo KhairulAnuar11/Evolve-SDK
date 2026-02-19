@@ -1,11 +1,14 @@
 // gui/src/components/Sidebar/HardwareConnection.tsx
 import React, { useState } from 'react';
-import { Settings, X, RefreshCw, Info } from 'lucide-react'; 
+import { Settings, X, RefreshCw, Info } from 'lucide-react';
+import { sdkService } from '../../services/sdkService';
 
 export default function HardwareConnection() {
   const [mode, setMode] = useState<'serial' | 'tcp' | 'mqtt'>('tcp');
   const [connected, setConnected] = useState(false);
   const [isMqttModalOpen, setMqttModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
   
   // Form State
   const [mqttConfig, setMqttConfig] = useState({
@@ -13,6 +16,7 @@ export default function HardwareConnection() {
     protocol: 'mqtt://',
     host: 'broker.emqx.io',
     port: 1883,
+    topic: 'rfid/tags',
     clientId: 'mqttx_' + Math.random().toString(16).substring(2, 8),
     username: '',
     password: '',
@@ -57,16 +61,74 @@ export default function HardwareConnection() {
     }));
   };
 
-  // 4. Form Submit Handler
-  const handleMqttSubmit = (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent page reload
-    console.log("Connecting with config:", mqttConfig);
-    
-    // Here you would call your actual connect logic
-    // await connectMqtt(mqttConfig);
-    
-    setConnected(true);
-    setMqttModalOpen(false);
+  // 4. Form Submit Handler - Connect to MQTT Broker
+  const handleMqttSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setError('');
+      setLoading(true);
+      
+      // Build broker URL from components
+      const brokerUrl = `${mqttConfig.protocol}${mqttConfig.host}:${mqttConfig.port}`;
+      
+      // Validate topic
+      if (!mqttConfig.topic.trim()) {
+        setError('Topic is required');
+        setLoading(false);
+        return;
+      }
+      
+      // Build options for authentication
+      const options: any = {
+        clientId: mqttConfig.clientId,
+      };
+      if (mqttConfig.username) options.username = mqttConfig.username;
+      if (mqttConfig.password) options.password = mqttConfig.password;
+      
+      // Log connection attempt for debugging
+      console.log('[GUI] MQTT Connection Attempt:', {
+        brokerUrl,
+        topic: mqttConfig.topic,
+        clientId: mqttConfig.clientId,
+      });
+      
+      // Call SDK service to connect
+      await sdkService.connectMqtt(brokerUrl, mqttConfig.topic, options);
+      
+      console.log('[GUI] MQTT Connection Successful');
+      setConnected(true);
+      setMqttModalOpen(false);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg);
+      console.error('[GUI] MQTT Connection Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // 5. Handle Disconnect
+  const handleDisconnect = async () => {
+    try {
+      setError('');
+      setLoading(true);
+      await sdkService.disconnect();
+      setConnected(false);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // 6. Handle Main Connect Button Click
+  const handleMainConnectClick = async () => {
+    if (connected) {
+      await handleDisconnect();
+    } else if (mode === 'mqtt') {
+      setMqttModalOpen(true);
+    }
   };
 
   return (
@@ -159,12 +221,31 @@ export default function HardwareConnection() {
         )}
 
         {/* Main Connect Button */}
+        {error && (
+          <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">
+            <p className="text-[10px] text-red-600">{error}</p>
+          </div>
+        )}
+        
+        <div className="mb-3 flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+          <span className="text-[10px] text-gray-600">
+            {connected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
+
         <button 
-          className={`w-full py-2 px-4 rounded text-white font-bold text-xs transition-colors shadow-sm
-            ${connected ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}
-          onClick={() => setConnected(!connected)}
+          disabled={loading}
+          className={`w-full py-2 px-4 rounded text-white font-bold text-xs transition-colors shadow-sm ${
+            loading
+              ? 'bg-gray-400 cursor-not-allowed'
+              : connected
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+          onClick={handleMainConnectClick}
         >
-          {connected ? 'Disconnect' : 'Connect'}
+          {loading ? 'Processing...' : connected ? 'Disconnect' : 'Connect'}
         </button>
       </div>
 
@@ -182,6 +263,13 @@ export default function HardwareConnection() {
 
             {/* START FORM */}
             <form onSubmit={handleMqttSubmit}>
+              {/* Error Display in Modal */}
+              {error && (
+                <div className="bg-red-50 border-b border-red-200 px-6 py-3">
+                  <p className="text-[10px] text-red-600">{error}</p>
+                </div>
+              )}
+              
               <div className="p-6 space-y-5 text-xs">
                 
                 {/* 1. Name */}
@@ -195,9 +283,10 @@ export default function HardwareConnection() {
                       name="name"
                       type="text"
                       required
+                      disabled={loading}
                       value={mqttConfig.name}
                       onChange={handleInputChange}
-                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none"
+                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                     <Info className="w-3.5 h-3.5 text-gray-300 absolute right-3 top-2" />
                   </div>
@@ -214,7 +303,8 @@ export default function HardwareConnection() {
                         name="protocol"
                         value={mqttConfig.protocol}
                         onChange={handleProtocolChange}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 appearance-none bg-white focus:border-blue-500 outline-none"
+                        disabled={loading}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 appearance-none bg-white focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                       >
                         <option value="mqtt://">mqtt://</option>
                         <option value="mqtts://">mqtts://</option>
@@ -228,9 +318,10 @@ export default function HardwareConnection() {
                       name="host"
                       type="text"
                       required
+                      disabled={loading}
                       value={mqttConfig.host}
                       onChange={handleInputChange}
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none"
+                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                   </div>
                 </div>
@@ -246,14 +337,36 @@ export default function HardwareConnection() {
                       name="port"
                       type="number"
                       required
+                      disabled={loading}
                       value={mqttConfig.port}
                       onChange={handleInputChange}
-                      className="w-1/3 border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none"
+                      className="w-1/3 border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                   </div>
                 </div>
 
-                {/* 4. Client ID */}
+                {/* 4. Topic */}
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label htmlFor="topic" className="text-right text-gray-500 font-medium">
+                    <span className="text-red-500 mr-1">*</span>Topic
+                  </label>
+                  <div className="col-span-3">
+                    <input
+                      id="topic"
+                      name="topic"
+                      type="text"
+                      required
+                      disabled={loading}
+                      value={mqttConfig.topic}
+                      onChange={handleInputChange}
+                      placeholder="e.g., rfid/tags, sensor/data"
+                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                    <p className="text-[9px] text-gray-400 mt-1">MQTT topic to subscribe to for receiving tag data</p>
+                  </div>
+                </div>
+
+                {/* 5. Client ID */}
                 <div className="grid grid-cols-4 items-center gap-4">
                   <label htmlFor="clientId" className="text-right text-gray-500 font-medium">Client ID</label>
                   <div className="col-span-3 flex gap-2">
@@ -261,17 +374,24 @@ export default function HardwareConnection() {
                       id="clientId"
                       name="clientId"
                       type="text"
+                      disabled={loading}
                       value={mqttConfig.clientId}
                       onChange={handleInputChange}
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-gray-600 bg-gray-50 focus:border-blue-500 outline-none"
+                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-gray-600 bg-gray-50 focus:border-blue-500 outline-none disabled:text-gray-400"
                     />
-                    <button type="button" onClick={regenerateClientId} className="text-gray-400 hover:text-blue-600" title="Regenerate ID">
+                    <button 
+                      type="button" 
+                      onClick={regenerateClientId} 
+                      disabled={loading}
+                      className="text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed" 
+                      title="Regenerate ID"
+                    >
                       <RefreshCw className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* 5. Username */}
+                {/* 6. Username */}
                 <div className="grid grid-cols-4 items-center gap-4">
                   <label htmlFor="username" className="text-right text-gray-500 font-medium">Username</label>
                   <div className="col-span-3">
@@ -279,14 +399,15 @@ export default function HardwareConnection() {
                       id="username"
                       name="username"
                       type="text"
+                      disabled={loading}
                       value={mqttConfig.username}
                       onChange={handleInputChange}
-                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none"
+                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                   </div>
                 </div>
 
-                {/* 6. Password */}
+                {/* 7. Password */}
                 <div className="grid grid-cols-4 items-center gap-4">
                   <label htmlFor="password" className="text-right text-gray-500 font-medium">Password</label>
                   <div className="col-span-3">
@@ -294,14 +415,15 @@ export default function HardwareConnection() {
                       id="password"
                       name="password"
                       type="password"
+                      disabled={loading}
                       value={mqttConfig.password}
                       onChange={handleInputChange}
-                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none"
+                      className="w-full border border-gray-300 rounded px-3 py-1.5 focus:border-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                   </div>
                 </div>
 
-                {/* 7. SSL Toggle */}
+                {/* 8. SSL Toggle */}
                 <div className="grid grid-cols-4 items-center gap-4">
                   <label htmlFor="ssl" className="text-right text-gray-500 font-medium">SSL/TLS</label>
                   <div className="col-span-3 flex items-center">
@@ -310,6 +432,7 @@ export default function HardwareConnection() {
                         id="ssl"
                         name="ssl"
                         type="checkbox" 
+                        disabled={loading}
                         checked={mqttConfig.ssl} 
                         onChange={handleInputChange} 
                         className="sr-only peer" 
@@ -329,15 +452,17 @@ export default function HardwareConnection() {
                 <button 
                   type="button"
                   onClick={() => setMqttModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                  disabled={loading}
+                  className="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="px-6 py-2 text-xs font-bold text-white bg-green-500 hover:bg-green-600 rounded shadow-sm transition-colors"
+                  disabled={loading}
+                  className="px-6 py-2 text-xs font-bold text-white bg-green-500 hover:bg-green-600 rounded shadow-sm transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                  Connect
+                  {loading ? 'Connecting...' : 'Connect'}
                 </button>
               </div>
             </form>

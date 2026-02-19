@@ -81,9 +81,15 @@ export class RfidSdk {
    * Also updates in-memory session statistics
    */
   start() {
-    if (!this.reader) return;
+    if (!this.reader) {
+      console.warn('[RfidSdk] No reader connected, cannot start scan');
+      return;
+    }
 
+    console.log('[RfidSdk] Starting scan');
     this.reader.on('tagRead', (rawTagData: any) => {
+      console.log('[RfidSdk] Tag read event received:', rawTagData);
+      
       // ✅ Update in-memory session counters
       this.totalCount++;
 
@@ -92,6 +98,7 @@ export class RfidSdk {
       }
 
       // ✅ Emit raw data to consumers (no formatting)
+      console.log('[RfidSdk] Emitting tag event:', rawTagData);
       this.emit('tag', rawTagData);
 
       // ✅ Emit stats update event (optional but recommended)

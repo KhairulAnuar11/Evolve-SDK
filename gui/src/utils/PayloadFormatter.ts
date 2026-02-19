@@ -14,14 +14,86 @@ export interface FormattedTag {
   direction: 'RX' | 'TX';
 }
 
+export interface TagDataDisplay {
+  id: number;
+  timestamp: string;
+  direction: 'RX' | 'TX';
+  data: Record<string, any>;
+}
+
 export class PayloadFormatter {
   /**
-   * Format raw TagData into GUI-friendly structure
+   * Parse raw payload - handles both JSON and hex formats
+   */
+  static parsePayload(rawData: any): { data: Record<string, any>; isJson: boolean } {
+    // Check if raw data is available
+    if (!rawData.raw) {
+      return { data: {}, isJson: false };
+    }
+
+    // Try to parse as JSON if it's a string or buffer
+    let payloadString = '';
+    
+    if (typeof rawData.raw === 'string') {
+      payloadString = rawData.raw;
+    } else if (Buffer.isBuffer(rawData.raw)) {
+      payloadString = rawData.raw.toString('utf-8');
+    }
+
+    // Attempt JSON parsing
+    if (payloadString.trim().startsWith('{')) {
+      try {
+        const jsonData = JSON.parse(payloadString);
+        return { 
+          data: jsonData, 
+          isJson: true 
+        };
+      } catch (e) {
+        // Not valid JSON, fall through to hex parsing
+        console.log('[PayloadFormatter] Failed to parse JSON:', e);
+      }
+    }
+
+    // Fall back to hex representation
+    const hex = payloadString 
+      ? payloadString.toUpperCase() 
+      : (Buffer.isBuffer(rawData.raw) ? rawData.raw.toString('hex').toUpperCase() : 'N/A');
+    
+    return { data: { raw: hex }, isJson: false };
+  }
+
+  /**
+   * Format raw TagData into GUI display structure
+   */
+  static formatTagForDisplay(rawData: any): TagDataDisplay {
+    console.log('[PayloadFormatter] formatTagForDisplay input:', rawData);
+    const { data } = this.parsePayload(rawData);
+    console.log('[PayloadFormatter] parsePayload result:', data);
+    
+    const result = {
+      id: rawData.timestamp || Date.now(),
+      timestamp: this.formatTime(rawData.timestamp),
+      direction: 'RX' as const,
+      data: data
+    };
+    
+    console.log('[PayloadFormatter] formatTagForDisplay output:', result);
+    return result;
+  }
+
+  /**
+   * Format raw TagData into GUI-friendly structure (legacy format)
    */
   static formatTag(rawData: any): FormattedTag {
+    const { data } = this.parsePayload(rawData);
+    
+    // Extract EPC from parsed data if available
+    const epcKey = Object.keys(data).find(key => key.toUpperCase() === 'EPC');
+    const epc = epcKey ? String(data[epcKey]) : 'N/A';
+    
     return {
-      tagId: rawData.tagId || 'Unknown',
-      epc: rawData.epc?.toUpperCase() || 'N/A',
+      tagId: rawData.id || epc || 'Unknown',
+      epc: epc.toUpperCase() || 'N/A',
       rssi: rawData.rssi || 0,
       rssiDb: `${rawData.rssi || 0} dBm`,
       timestamp: new Date(rawData.timestamp).toISOString(),
@@ -33,13 +105,20 @@ export class PayloadFormatter {
   /**
    * Format timestamp to readable format
    */
-  static formatTime(timestamp: number | Date): string {
-    const date = typeof timestamp === 'number' ? new Date(timestamp) : timestamp;
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
+  static formatTime(timestamp: number | Date | undefined): string {
+    if (!timestamp) return new Date().toLocaleTimeString('en-US', {
+      hour: 'numeric',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false
+      hour12: true
+    });
+    
+    const date = typeof timestamp === 'number' ? new Date(timestamp) : timestamp;
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
     });
   }
 

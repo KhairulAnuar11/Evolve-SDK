@@ -3,6 +3,7 @@ import RawDataConsole, {
   RawPacket,
   DataViewType,
 } from '../Dashboard/raw/RawDataConsole';
+import { PayloadFormatter } from '../../utils/PayloadFormatter';
 
 export default function Dashboard() {
   const [logs, setLogs] = useState<RawPacket[]>([]);
@@ -19,44 +20,20 @@ export default function Dashboard() {
   // Subscribe to real tag stream via IPC
   useEffect(() => {
     const onTag = (tag: any) => {
-      const toHex = (raw: any) => {
-        if (!raw) return '';
-        if (typeof raw === 'string') return raw;
-        // Handle Node Buffer if available
-        if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(raw)) {
-          return raw.toString('hex');
-        }
-        // Handle Uint8Array / ArrayBuffer
-        if (raw instanceof Uint8Array || (raw && raw.constructor && raw.constructor.name === 'Uint8Array')) {
-          try {
-            // use Buffer.from when available
-            if (typeof Buffer !== 'undefined' && Buffer.from) return Buffer.from(raw).toString('hex');
-            // fallback: map bytes
-            return Array.from(raw).map((b: any) => b.toString(16).padStart(2, '0')).join('');
-          } catch {
-            return JSON.stringify(raw);
-          }
-        }
-        if (Array.isArray(raw)) {
-          try {
-            if (typeof Buffer !== 'undefined' && Buffer.from) return Buffer.from(raw).toString('hex');
-            return raw.map((b: any) => Number(b).toString(16).padStart(2, '0')).join('');
-          } catch {
-            return JSON.stringify(raw);
-          }
-        }
-        try { return JSON.stringify(raw); } catch { return String(raw); }
-      };
-
-      const dataStr = toHex(tag?.raw ?? tag);
+      console.log('[Dashboard] Received tag event:', tag);
+      
+      // Use PayloadFormatter to format the tag data
+      const formattedTag = PayloadFormatter.formatTagForDisplay(tag);
+      console.log('[Dashboard] Formatted tag:', formattedTag);
 
       const newLog: RawPacket = {
-        id: Date.now(),
-        timestamp: new Date().toLocaleTimeString(),
-        direction: 'RX',
-        data: dataStr,
+        id: formattedTag.id,
+        timestamp: formattedTag.timestamp,
+        direction: formattedTag.direction,
+        data: formattedTag.data,
       };
 
+      console.log('[Dashboard] Adding to logs:', newLog);
       setLogs((prev) => [...prev.slice(-100), newLog]);
     };
 
