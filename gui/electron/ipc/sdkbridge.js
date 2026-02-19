@@ -41,8 +41,16 @@ export function registerSdkBridge({ mainWindow, sdk }) {
   ipcMain.handle('reader:connect-mqtt', async (_event, { brokerUrl, topic, options }) => {
     console.log('[IPC] reader:connect-mqtt', brokerUrl, topic);
     if (!sdk) return { success: true, mock: true };
-    await sdk.connectMqtt(brokerUrl, topic, options);
-    return { success: true };
+    try {
+      await sdk.connectMqtt(brokerUrl, topic, options);
+      return { success: true };
+    } catch (err) {
+      console.error('[IPC] MQTT connection error:', err);
+      return { 
+        success: false, 
+        error: err?.message || String(err) 
+      };
+    }
   });
 
   // MQTT publish handler

@@ -168,7 +168,7 @@ export default function HardwareConnection() {
         </button>
       </div>
 
-      {/* --- MQTT CONFIGURATION MODAL --- */}
+      {/* --- MQTT CONFIGURATION FORM MODAL --- */}
       {isMqttModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-xl w-[550px] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
