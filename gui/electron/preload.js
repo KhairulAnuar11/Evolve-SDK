@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopScan: () => ipcRenderer.send('reader:stop-scan'),
   onTagRead: (callback) => ipcRenderer.on('rfid:tag-read', (_event, value) => callback(value)),
   removeTagListener: () => ipcRenderer.removeAllListeners('rfid:tag-read'),
+  onStats: (callback) => ipcRenderer.on('rfid:stats', (_event, stats) => callback(stats)),
+  removeStatsListener: () => ipcRenderer.removeAllListeners('rfid:stats'),
 
   onSystemMessage: (callback) => {
     const subscription = (_event, message, level) => callback(message, level);

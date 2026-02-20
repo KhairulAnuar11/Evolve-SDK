@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import { sdkService } from '../services/sdkService';
 
 interface TagData {
   epc: string;
@@ -20,6 +21,19 @@ const TagContext = createContext<TagContextType | undefined>(undefined);
 export const TagProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [tags, setTags] = useState<Map<string, TagData>>(new Map());
   const [totalReads, setTotalReads] = useState(0);
+  const [uniqueCount, setUniqueCount] = useState(0);
+
+  // Listen to SDK stats updates
+  useEffect(() => {
+    const unsubscribe = sdkService.onStats((stats) => {
+      setTotalReads(stats.total);
+      setUniqueCount(stats.unique);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   const addTag = (epc: string, rssi: number) => {
     setTotalReads((prev) => prev + 1);
@@ -52,13 +66,14 @@ export const TagProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const clearTags = () => {
     setTags(new Map());
     setTotalReads(0);
+    setUniqueCount(0);
   };
 
   return (
     <TagContext.Provider value={{ 
       tags, 
       totalReads, 
-      uniqueCount: tags.size, 
+      uniqueCount, 
       addTag, 
       clearTags 
     }}>

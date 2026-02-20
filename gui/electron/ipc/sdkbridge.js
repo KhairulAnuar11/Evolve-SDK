@@ -115,17 +115,27 @@ export function registerSdkBridge({ mainWindow, sdk }) {
       }
     };
 
+    const statsListener = (stats) => {
+      try {
+        mainWindow.webContents.send('rfid:stats', stats);
+      } catch (err) {
+        console.error('[IPC] Error sending stats:', err);
+      }
+    };
+
     console.log('[IPC] Registering tag listener and starting SDK');
     sdk.on('tag', tagListener);
+    sdk.on('stats', statsListener);
     sdk.start();
 
     ipcMain.once('reader:stop-scan', () => {
       try {
         console.log('[IPC] Stopping scan');
         sdk.stop();
-        // Safely remove listener if method exists
+        // Safely remove listeners if method exists
         if (typeof sdk.removeListener === 'function') {
           sdk.removeListener('tag', tagListener);
+          sdk.removeListener('stats', statsListener);
         }
       } catch (err) {
         console.error('[IPC] Error during stop-scan:', err);

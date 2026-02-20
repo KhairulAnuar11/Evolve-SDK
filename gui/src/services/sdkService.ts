@@ -83,5 +83,15 @@ export const sdkService = {
   onTagRead: (callback: (tag: any) => void) => {
     // @ts-ignore
     window.electronAPI.onTagRead(callback);
+  },
+
+  /**
+   * Register callback for cumulative stats updates
+   * 
+   * @param callback - Function called when stats are updated with { total, unique }
+   */
+  onStats: (callback: (stats: { total: number; unique: number }) => void) => {
+    // @ts-ignore
+    window.electronAPI.onStats(callback);
   }
 };
