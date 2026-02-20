@@ -37,12 +37,46 @@ const formatPayload = async (tag) => {
 export function registerSdkBridge({ mainWindow, sdk }) {
   // --- SDK HANDLERS ---
 
-  ipcMain.handle('reader:connect', async (_event, config) => {
-    console.log('[IPC] reader:connect', config);
-    if (!sdk) return { success: true, mock: true };
-    await sdk.connectTcp(config.host, config.port);
-    return { success: true };
+  // TCP Connection
+  ipcMain.handle('reader:connect', async (_event, { host, port }) => {
+    try {
+      await sdk.connectTcp(host, port);
+      console.log(`[IPC] Connection Successful: TCP ${host}:${port}`);
+      return { success: true };
+    } catch (err) {
+      console.error(`[IPC] Connection Failed: TCP ${host}:${port} - ${err.message}`);
+      throw err;
+    }
   });
+
+  // Serial Connection
+  ipcMain.handle('reader:connect-serial', async (_event, { path, baudRate }) => {
+    try {
+      await sdk.connectSerial(path, baudRate);
+      console.log(`[IPC] Connection Successful: Serial ${path}`);
+      return { success: true };
+    } catch (err) {
+      console.error(`[IPC] Connection Failed: Serial ${path} - ${err.message}`);
+      throw err;
+    }
+  });
+
+  // Disconnect
+  ipcMain.handle('reader:disconnect', async () => {
+    try {
+      const type = sdk.reader?.constructor.name;
+      await sdk.disconnect();
+      console.log(`[IPC] ${type} disconnected successfully`);
+      return { success: true };
+    } catch (err) {
+      console.error(`[IPC] Disconnect failed: ${err.message}`);
+      throw err;
+    }
+  });
+
+  // Track active listeners to prevent duplicates
+  let currentTagListener = null;
+  let currentStatsListener = null;
 
  // MQTT connection handler
   ipcMain.handle('reader:connect-mqtt', async (_event, { brokerUrl, topic, options }) => {
@@ -72,13 +106,6 @@ export function registerSdkBridge({ mainWindow, sdk }) {
     }
   });
 
-  ipcMain.handle('reader:disconnect', async () => {
-    console.log('[IPC] reader:disconnect');
-    if (!sdk) return { success: true };
-    await sdk.disconnect();
-    return { success: true };
-  });
-
   ipcMain.handle('reader:configure', async (_event, settings) => {
     console.log('[IPC] reader:configure', settings);
     if (!sdk) return { success: true };
@@ -106,10 +133,27 @@ export function registerSdkBridge({ mainWindow, sdk }) {
       return;
     }
 
+    // Remove old listeners if they exist to prevent duplicates
+    if (currentTagListener !== null) {
+      console.log('[IPC] Removing old tag listener');
+      if (typeof sdk.removeListener === 'function') {
+        sdk.removeListener('tag', currentTagListener);
+      }
+    }
+    if (currentStatsListener !== null) {
+      console.log('[IPC] Removing old stats listener');
+      if (typeof sdk.removeListener === 'function') {
+        sdk.removeListener('stats', currentStatsListener);
+      }
+    }
+
     const tagListener = async (tag) => {
       try {
+        console.log('[IPC] Tag received from SDK:', tag);
         const payload = await formatPayload(tag);
+        console.log('[IPC] Formatted payload ready to send:', payload);
         mainWindow.webContents.send('rfid:tag-read', payload);
+        console.log('[IPC] Tag sent to renderer process');
       } catch (err) {
         console.error('[IPC] Error formatting/sending tag:', err);
       }
@@ -117,16 +161,28 @@ export function registerSdkBridge({ mainWindow, sdk }) {
 
     const statsListener = (stats) => {
       try {
+        console.log('[IPC] Stats received from SDK:', stats);
         mainWindow.webContents.send('rfid:stats', stats);
+        console.log('[IPC] Stats sent to renderer process');
       } catch (err) {
         console.error('[IPC] Error sending stats:', err);
       }
     };
 
-    console.log('[IPC] Registering tag listener and starting SDK');
+    // Store listeners for cleanup
+    currentTagListener = tagListener;
+    currentStatsListener = statsListener;
+
+    console.log('[IPC] Registering tag and stats listeners, then starting SDK');
     sdk.on('tag', tagListener);
     sdk.on('stats', statsListener);
-    sdk.start();
+    
+    try {
+      sdk.start();
+      console.log('[IPC] SDK started successfully');
+    } catch (err) {
+      console.error('[IPC] Error starting SDK:', err);
+    }
 
     ipcMain.once('reader:stop-scan', () => {
       try {
@@ -137,6 +193,8 @@ export function registerSdkBridge({ mainWindow, sdk }) {
           sdk.removeListener('tag', tagListener);
           sdk.removeListener('stats', statsListener);
         }
+        currentTagListener = null;
+        currentStatsListener = null;
       } catch (err) {
         console.error('[IPC] Error during stop-scan:', err);
       }
