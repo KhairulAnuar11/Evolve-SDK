@@ -132,8 +132,10 @@ export class RfidSdk {
       // ✅ Update in-memory session counters
       this.totalCount++;
 
-      if (rawTagData?.epc) {
-        this.uniqueTags.add(rawTagData.epc);
+      // Track unique tags: use 'epc' for serial readers, 'id' for MQTT
+      const uniqueIdentifier = rawTagData?.epc || rawTagData?.id;
+      if (uniqueIdentifier) {
+        this.uniqueTags.add(uniqueIdentifier);
       }
 
       // ✅ Emit raw data to consumers (no formatting)
