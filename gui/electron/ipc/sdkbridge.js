@@ -34,7 +34,12 @@ const formatPayload = async (tag) => {
   }
 };
 
-export function registerSdkBridge({ mainWindow, sdk }) {
+export function registerSdkBridge({ mainWindow, sdk, db }) {
+  console.log('[IPC] registerSdkBridge called');
+  console.log('[IPC] sdk available:', !!sdk);
+  console.log('[IPC] db available:', !!db);
+  console.log('[IPC] mainWindow available:', !!mainWindow);
+  
   // --- SDK HANDLERS ---
 
   // TCP Connection
@@ -149,6 +154,28 @@ export function registerSdkBridge({ mainWindow, sdk }) {
       try {
         const payload = await formatPayload(tag);
         mainWindow.webContents.send('rfid:tag-read', payload);
+        
+        // Save tag to database
+        if (db) {
+          try {
+            db.run(`
+              INSERT INTO rfid_events (epc, reader_id, antenna, rssi)
+              VALUES (?, ?, ?, ?)
+            `, [
+              tag.id || tag.epc || 'UNKNOWN',
+              'MQTT_READER',
+              tag.antenna || 0,
+              tag.rssi || 0
+            ]);
+            
+            // Save database to file after each insert
+            if (db.saveToFile) {
+              db.saveToFile();
+            }
+          } catch (dbErr) {
+            console.error('[IPC] Error saving tag to database:', dbErr);
+          }
+        }
       } catch (err) {
         console.error('[IPC] Error formatting/sending tag:', err);
       }
@@ -224,6 +251,60 @@ export function registerSdkBridge({ mainWindow, sdk }) {
       return { success: true };
     } catch (err) {
       console.error('Failed to save CSV file:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Export data from database by time period
+  ipcMain.handle('data:export-database', async (event, days) => {
+    console.log('[IPC] data:export-database called with days:', days);
+    
+    if (!db) {
+      console.error('[IPC] Database not available for export');
+      return { success: false, error: 'Database not available' };
+    }
+
+    try {
+      console.log('[IPC] Querying database for events from last', days, 'days');
+      
+      // Query database for events from the last N days using sql.js
+      const result = db.exec(`
+        SELECT epc, reader_id, antenna, rssi, read_at
+        FROM rfid_events
+        WHERE read_at >= datetime('now', ?)
+        ORDER BY read_at DESC
+      `, [`-${days} days`]);
+      
+      // sql.js returns an array of statement results
+      let events = [];
+      if (result.length > 0 && result[0].values.length > 0) {
+        const columns = result[0].columns;
+        events = result[0].values.map(row => {
+          const obj = {};
+          columns.forEach((col, idx) => {
+            obj[col] = row[idx];
+          });
+          return obj;
+        });
+      }
+      
+      console.log('[IPC] Database query returned', events.length, 'events');
+
+      if (events.length === 0) {
+        return { success: false, error: `No tag data found for the last ${days} days.`, count: 0 };
+      }
+
+      // Generate CSV content
+      const header = 'EPC,Reader,Antenna,RSSI,Read Time\n';
+      const rows = events.map(evt => 
+        `${evt.epc},${evt.reader_id},${evt.antenna},${evt.rssi},"${evt.read_at}"`
+      ).join('\n');
+      const csvContent = header + rows;
+
+      console.log('[IPC] Generated CSV with', events.length, 'rows');
+      return { success: true, content: csvContent, count: events.length };
+    } catch (err) {
+      console.error('[IPC] Database export error:', err);
       return { success: false, error: err.message };
     }
   });
