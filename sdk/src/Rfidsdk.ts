@@ -18,6 +18,7 @@ import { RfidEventEmitter } from './events/EventBus';
 import { ReaderManager } from './readers/ReaderManager';
 import { TcpReader } from './transports/TCPTransport';
 import { MqttReader } from './transports/MQTTTransport';
+import { SerialReader } from './transports/SerialTransport';
 
 export class RfidSdk {
   private emitter = new RfidEventEmitter();
@@ -26,6 +27,9 @@ export class RfidSdk {
   // 🔥 SESSION CUMULATIVE STATS (IN-MEMORY ONLY)
   private totalCount = 0;
   private uniqueTags = new Set<string>();
+
+  // Store tag listener to prevent duplicates
+  private tagReadListener?: (rawTagData: any) => void;
 
   // --- EVENT HANDLING ---
   on(event: string, callback: (...args: any[]) => void) {
@@ -52,28 +56,15 @@ export class RfidSdk {
 
   // --- CONNECT / DISCONNECT ---
   async connectTcp(host: string, port: number) {
-    try {
-      // Disconnect any existing reader before connecting a new one
-      if (this.reader) {
-        await this.disconnect();
-      }
-      
-      this.reader = new TcpReader(host, port, this.emitter);
-      await this.reader.connect();
-      return true;
-    } catch (err) {
-      // Clean up reader instance on connection failure
-      if (this.reader) {
-        try {
-          await this.reader.disconnect();
-        } catch (cleanupErr) {
-          console.error('[RfidSdk] Error during cleanup:', cleanupErr);
-        }
-        this.reader = undefined;
-      }
-      // Re-throw the original error so it propagates to the caller
-      throw err;
-    }
+    this.reader = new TcpReader(host, port, this.emitter);
+    await this.reader.connect();
+    console.log(`[RfidSdk] TCP Reader connected at ${host}:${port}`);
+  }
+
+  async connectSerial(path: string, baudRate: number) {
+    this.reader = new SerialReader(path, baudRate, this.emitter);
+    await this.reader.connect();
+    console.log(`[RfidSdk] Serial Reader connected at ${path}`);
   }
 
   async connectMqtt(brokerUrl: string, topic: string, options?: any) {
@@ -103,6 +94,13 @@ export class RfidSdk {
 
   async disconnect() {
     try {
+      // Clean up listener before disconnect
+      if (this.tagReadListener && this.reader) {
+        console.log('[RfidSdk] Cleaning up tag listener on disconnect');
+        this.reader.removeListener('tagRead', this.tagReadListener);
+        this.tagReadListener = undefined;
+      }
+      
       await this.reader?.disconnect();
     } finally {
       this.reader = undefined;
@@ -128,23 +126,33 @@ export class RfidSdk {
     }
 
     console.log('[RfidSdk] Starting scan');
-    this.reader.on('tagRead', (rawTagData: any) => {
-      console.log('[RfidSdk] Tag read event received:', rawTagData);
-      
+
+    // Remove old listener if it exists to prevent duplicates
+    if (this.tagReadListener) {
+      console.log('[RfidSdk] Removing previous tag listener');
+      this.reader.removeListener('tagRead', this.tagReadListener);
+    }
+
+    // Create the new listener
+    this.tagReadListener = (rawTagData: any) => {
       // ✅ Update in-memory session counters
       this.totalCount++;
 
-      if (rawTagData?.epc) {
-        this.uniqueTags.add(rawTagData.epc);
+      // Track unique tags: use 'epc' for serial readers, 'id' for MQTT
+      const uniqueIdentifier = rawTagData?.epc || rawTagData?.id;
+      if (uniqueIdentifier) {
+        this.uniqueTags.add(uniqueIdentifier);
       }
 
       // ✅ Emit raw data to consumers (no formatting)
-      console.log('[RfidSdk] Emitting tag event:', rawTagData);
       this.emit('tag', rawTagData);
 
       // ✅ Emit stats update event (optional but recommended)
       this.emit('stats', this.getCumulativeStats());
-    });
+    };
+
+    // Register the new listener
+    this.reader.on('tagRead', this.tagReadListener);
 
     this.reader.startScan();
   }
@@ -154,6 +162,14 @@ export class RfidSdk {
    */
   stop() {
     if (!this.reader) return;
+    
+    // Remove listener when stopping
+    if (this.tagReadListener) {
+      console.log('[RfidSdk] Removing tag listener on stop');
+      this.reader.removeListener('tagRead', this.tagReadListener);
+      this.tagReadListener = undefined;
+    }
+    
     this.reader.stopScan();
   }
 

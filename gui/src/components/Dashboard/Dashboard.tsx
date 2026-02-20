@@ -5,6 +5,12 @@ import RawDataConsole, {
 } from '../Dashboard/raw/RawDataConsole';
 import { PayloadFormatter } from '../../utils/PayloadFormatter';
 
+declare global {
+  interface Window {
+    electronAPI: any;
+  }
+}
+
 export default function Dashboard() {
   const [logs, setLogs] = useState<RawPacket[]>([]);
   const [viewType, setViewType] = useState<DataViewType>('raw');
